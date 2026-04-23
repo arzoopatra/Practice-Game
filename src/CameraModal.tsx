@@ -366,7 +366,7 @@ export const CameraModal: React.FC<CameraModalProps> = ({
             )}
             <button
              onClick={() =>
-                 window.location.replace("https://arzoopatra.github.io/Protex-Hack2Win/game.html")
+                 window.location.replace("https://arzoopatra.github.io/SIGNIFY-AI/")
               }
                  style={exitButtonStyle}
               >
