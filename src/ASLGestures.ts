@@ -1,4 +1,6 @@
 import fp from "fingerpose";
+const pinkyPath: { x: number; y: number }[] = [];
+const MAX_POINTS = 20;
 
 const {
   GestureDescription,
@@ -79,8 +81,15 @@ halfCurled(D, Finger.Thumb, 1.0);
 
 // E: all fingers curled (thumb curled)
 const E = new GestureDescription("E");
-for (const f of [Finger.Index, Finger.Middle, Finger.Ring, Finger.Pinky]) curled(E, f, 1.0);
-curled(E, Finger.Thumb, 1.0);
+for (const f of [Finger.Index, Finger.Middle, Finger.Ring, Finger.Pinky]) {
+  E.addCurl(f, FingerCurl.FullCurl, 1.0);
+  E.addCurl(f, FingerCurl.HalfCurl, 0.8);
+}
+E.addCurl(Finger.Thumb, FingerCurl.FullCurl, 0.8);
+E.addCurl(Finger.Thumb, FingerCurl.HalfCurl, 1.0);
+for (const f of [Finger.Thumb, Finger.Index, Finger.Middle, Finger.Ring, Finger.Pinky]) {
+  addAllDirections(E, f, 0.2);
+}
 
 // F: thumb+index form circle (hard); approximate: thumb+index half curl, others up
 const F = new GestureDescription("F");
@@ -118,7 +127,8 @@ curled(I, Finger.Thumb, 0.8);
 
 // J: dynamic (motion). Approx as I (static) so you can at least detect a “J-ready” handshape.
 const J = new GestureDescription("J");
-straightUp(J, Finger.Pinky, 1.0);
+straightUp(J, Finger.Pinky, 0.8);
+addAllDirections(J, Finger.Pinky, 0.2);
 for (const f of [Finger.Index, Finger.Middle, Finger.Ring]) curled(J, f, 1.0);
 curled(J, Finger.Thumb, 0.8);
 
@@ -251,11 +261,36 @@ const estimator = new GestureEstimator([
 
 export type GestureResult = { label: string; confidence: number } | null;
 
+function isJMotion() {
+  if (pinkyPath.length < 10) return false;
+
+  let movedDown = false;
+  let movedRight = false;
+
+  for (let i = 1; i < pinkyPath.length; i++) {
+    const dx = pinkyPath[i].x - pinkyPath[i - 1].x;
+    const dy = pinkyPath[i].y - pinkyPath[i - 1].y;
+
+    if (dy > 1) movedDown = true;
+    if (dx > 1) movedRight = true;
+  }
+
+  return movedDown && movedRight;
+}
+
 /**
  * Raw single-frame classification
  */
 export function checkGesture(landmarks21x3: number[][]): GestureResult {
-  if (!Array.isArray(landmarks21x3) || landmarks21x3.length !== 21) return null;
+    if (!Array.isArray(landmarks21x3) || landmarks21x3.length !== 21) return null;
+
+  const pinkyTip = landmarks21x3[20];
+  if (pinkyTip) {
+  pinkyPath.push({ x: pinkyTip[0], y: pinkyTip[1] });
+  if (pinkyPath.length > MAX_POINTS) {
+    pinkyPath.shift();
+  }
+}
 
   const estimate = estimator.estimate(landmarks21x3, 0);
   const sorted = [...estimate.gestures].sort((a: any, b: any) => b.score - a.score);
@@ -265,11 +300,18 @@ export function checkGesture(landmarks21x3: number[][]): GestureResult {
   const gestures = [...estimate.gestures].sort((a: any, b: any) => b.score - a.score);
   const best = gestures[0];
 
-  const MIN_SCORE = 4.0;
-
-  if (best.score < MIN_SCORE) return null;
-
+  const MIN_SCORE = 2.5;
+if (best.score < MIN_SCORE) {
+  // still return best guess instead of null
   return { label: best.name, confidence: best.score };
+}  let finalLabel = best.name;
+  if (finalLabel !== "I" && finalLabel !== "J") {
+  pinkyPath.length = 0;
+}
+  if (finalLabel === "I" && isJMotion()) {
+  finalLabel = "J";
+}
+return { label: finalLabel, confidence: best.score };
 }
 
 // ---- Optional: smoothing for “hold to confirm” ----
